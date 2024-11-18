@@ -71,7 +71,6 @@ Future Enhancements
 Extend the project to use more advanced deep learning models (e.g., neural networks for time series forecasting).
 Implement real-time financial data monitoring and anomaly detection.
 Integrate with an external API to pull live financial data.
-License
-This project is licensed under the MIT License - see the LICENSE file for details.
+
 
 
