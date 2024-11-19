@@ -2,530 +2,505 @@ import pandas as pd
 import numpy as np
 import glob
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_percentage_error
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
 import seaborn as sns
-from datetime import datetime, timedelta
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder
-from collections import Counter
-import re
-from scipy import stats
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor, IsolationForest
-from sklearn.cluster import KMeans
+from datetime import datetime
+import logging
 import warnings
 warnings.filterwarnings('ignore')
 
-class SECFilingAnalyzer:
-    def __init__(self, directory):
-       
-        self.directory = directory
-        self.df = None
-        self.summary_stats = None
-        
-    def load_and_clean_data(self):
-       
-       
-        file_list = glob.glob(self.directory + "/*.csv")
-        dfs = [pd.read_csv(file) for file in file_list]
-        self.df = pd.concat(dfs, ignore_index=True)
-        
-        
-        self.df['Filing date'] = pd.to_datetime(self.df['Filing date'])
-        self.df['Reporting date'] = pd.to_datetime(self.df['Reporting date'], errors='coerce')
-        
-        
-        self.df['Year'] = self.df['Filing date'].dt.year
-        self.df['Month'] = self.df['Filing date'].dt.month
-        self.df['Quarter'] = self.df['Filing date'].dt.quarter
-        self.df['WeekDay'] = self.df['Filing date'].dt.day_name()
-        
-        
-        self.df['Delay'] = self.df['Reporting date'] - self.df['Filing date']
-        self.df['Delay_in_days'] = self.df['Delay'].dt.days
-        
-        return self.df
-    
-    def detect_anomalies(self, column='Delay_in_days', threshold=3):
-        """Detect anomalies in specified column using z-score"""
-        z_scores = np.abs(stats.zscore(self.df[column].dropna()))
-        anomalies = self.df[column].dropna()[z_scores > threshold]
-        return anomalies
-    
-    def analyze_filing_patterns(self):
-        """Analyze patterns in filing behavior"""
-        patterns = {
-            'weekday_distribution': self.df['WeekDay'].value_counts(),
-            'quarter_distribution': self.df['Quarter'].value_counts(),
-            'yearly_growth': self.df.groupby('Year').size().pct_change() * 100,
-            'seasonal_patterns': self.df.groupby(['Year', 'Month']).size().unstack().mean()
-        }
-        return patterns
-    
-    def generate_visualizations(self):
-        """Generate comprehensive visualizations"""
-        plt.style.use('classic')
-        
-        # 1. Enhanced Monthly Filing Trends with Trend Line
-        plt.figure(figsize=(15, 8))
-        monthly_counts = self.df.groupby(self.df['Filing date'].dt.to_period('M')).size()
-        ax = monthly_counts.plot(kind='bar', color='skyblue', alpha=0.7)
-        
-        # Add trend line
-        z = np.polyfit(range(len(monthly_counts)), monthly_counts, 1)
-        p = np.poly1d(z)
-        plt.plot(range(len(monthly_counts)), p(range(len(monthly_counts))), "r--", alpha=0.8)
-        
-        plt.title('Monthly Filing Frequency with Trend Line', pad=20, fontsize=12)
-        plt.xlabel('Month', labelpad=10)
-        plt.ylabel('Number of Filings', labelpad=10)
-        plt.xticks(rotation=45)
-        ax.grid(True, axis='y', linestyle='--', alpha=0.7)
-        plt.tight_layout()
-        plt.show()
-        
-        # 2. Filing Delays Boxplot by Form Type
-        plt.figure(figsize=(15, 8))
-        sns.boxplot(x='Form type', y='Delay_in_days', data=self.df)
-        plt.title('Filing Delays by Form Type', pad=20, fontsize=12)
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.show()
-        
-        # 3. Weekly Filing Pattern Heatmap
-        weekly_pattern = self.df.pivot_table(
-            index=self.df['Filing date'].dt.day_name(),
-            columns=self.df['Filing date'].dt.month,
-            aggfunc='size',
-            fill_value=0
-        )
-        
-        plt.figure(figsize=(12, 8))
-        sns.heatmap(weekly_pattern, cmap='YlOrRd', annot=True, fmt='g')
-        plt.title('Filing Patterns: Day of Week vs Month', pad=20)
-        plt.tight_layout()
-        plt.show()
-        
-        # 4. Form Type Distribution Over Time
-        plt.figure(figsize=(15, 8))
-        form_type_by_year = self.df.pivot_table(
-            index='Year',
-            columns='Form type',
-            aggfunc='size',
-            fill_value=0
-        )
-        form_type_by_year.plot(kind='bar', stacked=True)
-        plt.title('Form Type Distribution Over Years', pad=20)
-        plt.xlabel('Year')
-        plt.ylabel('Number of Filings')
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.tight_layout()
-        plt.show()
-        
-        # 5. Delay Distribution Analysis
-        plt.figure(figsize=(12, 6))
-        delay_stats = self.df.groupby('Form type')['Delay_in_days'].agg(['mean', 'std']).round(2)
-        delay_stats.plot(kind='bar', yerr='std', capsize=5)
-        plt.title('Average Filing Delays by Form Type with Standard Deviation')
-        plt.xlabel('Form Type')
-        plt.ylabel('Days')
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.show()
-        
-    def calculate_complex_metrics(self):
-        """Calculate complex metrics and statistics"""
-        metrics = {
-            'filing_velocity': self._calculate_filing_velocity(),
-            'compliance_score': self._calculate_compliance_score(),
-            'form_complexity': self._analyze_form_complexity()
-        }
-        return metrics
-    
-    def _calculate_filing_velocity(self):
-        """Calculate the rate of change in filing frequency"""
-        monthly_counts = self.df.groupby(self.df['Filing date'].dt.to_period('M')).size()
-        velocity = monthly_counts.pct_change()
-        return {
-            'average_velocity': velocity.mean(),
-            'volatility': velocity.std(),
-            'max_increase': velocity.max(),
-            'max_decrease': velocity.min()
-        }
-    
-    def _calculate_compliance_score(self):
-        """Calculate compliance score based on filing delays"""
-        delays = self.df['Delay_in_days'].dropna()
-        score = 100 * (1 - (delays / delays.max()))
-        return {
-            'average_score': score.mean(),
-            'score_std': score.std(),
-            'compliance_rate': (delays <= 0).mean() * 100
-        }
-    
-    def _analyze_form_complexity(self):
-        """Analyze complexity of different form types"""
-        return self.df.groupby('Form type').agg({
-            'Delay_in_days': ['mean', 'std', 'count'],
-        }).round(2)
-    
-    def analyze_filing_trends(self):
-        """Analyze trends in filing patterns"""
-        # Monthly trend analysis
-        monthly_filings = self.df.groupby([self.df['Filing date'].dt.year, 
-                                         self.df['Filing date'].dt.month]).size()
-        # Calculate moving averages
-        ma_3 = monthly_filings.rolling(window=3).mean()
-        ma_6 = monthly_filings.rolling(window=6).mean()
-        
-        return {
-            'monthly_filings': monthly_filings,
-            'moving_avg_3month': ma_3,
-            'moving_avg_6month': ma_6
-        }
-    
-    def generate_report(self):
-        """Generate a comprehensive analysis report"""
-        metrics = self.calculate_complex_metrics()
-        patterns = self.analyze_filing_patterns()
-        
-        report = f"""
-SEC Filings Advanced Analysis Report
-==================================
-
-Dataset Overview:
-----------------
-Total Filings: {len(self.df):,}
-Date Range: {self.df['Filing date'].min().strftime('%Y-%m-%d')} to {self.df['Filing date'].max().strftime('%Y-%m-%d')}
-Number of Unique Form Types: {self.df['Form type'].nunique()}
-
-Filing Velocity Metrics:
-----------------------
-Average Monthly Change: {metrics['filing_velocity']['average_velocity']:.2f}%
-Volatility: {metrics['filing_velocity']['volatility']:.2f}
-Maximum Monthly Increase: {metrics['filing_velocity']['max_increase']:.2f}%
-Maximum Monthly Decrease: {metrics['filing_velocity']['max_decrease']:.2f}%
-
-Compliance Metrics:
------------------
-Average Compliance Score: {metrics['compliance_score']['average_score']:.2f}
-Compliance Rate: {metrics['compliance_score']['compliance_rate']:.2f}%
-
-Filing Patterns:
---------------
-Most Common Filing Day: {patterns['weekday_distribution'].index[0]}
-Busiest Quarter: Q{patterns['quarter_distribution'].index[0]}
-Average Yearly Growth: {patterns['yearly_growth'].mean():.2f}%
-
-Form Type Analysis:
------------------
-{metrics['form_complexity'].to_string()}
-
-Anomaly Detection:
-----------------
-Number of Anomalous Delays: {len(self.detect_anomalies())}
-"""
-        return report
-
-def save_analysis_to_excel(self, filename='sec_filing_analysis.xlsx'):
-    """Save analysis results to Excel file"""
-    with pd.ExcelWriter(filename) as writer:
-        # Basic statistics
-        self.df.describe().to_excel(writer, sheet_name='Basic Statistics')
-        
-        # Filing patterns
-        patterns = self.analyze_filing_patterns()
-        pd.DataFrame(patterns['weekday_distribution']).to_excel(writer, sheet_name='Filing Patterns', startrow=0)
-        pd.DataFrame(patterns['quarter_distribution']).to_excel(writer, sheet_name='Filing Patterns', startrow=len(patterns['weekday_distribution'])+2)
-        
-        # Complex metrics
-        metrics = self.calculate_complex_metrics()
-        metrics['form_complexity'].to_excel(writer, sheet_name='Complex Metrics')
-        
-        # Anomalies
-        anomalies = self.detect_anomalies()
-        pd.DataFrame(anomalies).to_excel(writer, sheet_name='Anomalies')
-
-# Example usage:
-if __name__ == "__main__":
-    directory = r"C:\Users\mattb\Videos\Desktop\Csv sec"
-    analyzer = SECFilingAnalyzer(directory)
-    analyzer.load_and_clean_data()
-    
-    # Generate visualizations
-    analyzer.generate_visualizations()
-    
-    # Generate and print report
-    report = analyzer.generate_report()
-    print(report)
-    
-    # Calculate additional metrics
-    metrics = analyzer.calculate_complex_metrics()
-    patterns = analyzer.analyze_filing_patterns()
-    
-    # Detect anomalies
-    anomalies = analyzer.detect_anomalies()
-    if len(anomalies) > 0:
-        print("\nAnomaly Detection Results:")
-        print(f"Found {len(anomalies)} anomalies in filing delays")
 
 class SECFilingAnalyzer:
     def __init__(self, directory):
-        """Initialize the SEC Filing Analyzer with the directory containing CSV files"""
         self.directory = directory
         self.df = None
-        self.summary_stats = None
         self.ml_models = {}
         self.label_encoders = {}
-        self.scaler = MinMaxScaler()
-        
+        self.scaler = StandardScaler()
+
     def load_and_clean_data(self):
         """Load and clean the SEC filing data"""
-        # Load data
-        file_list = glob.glob(self.directory + "/*.csv")
-        dfs = [pd.read_csv(file) for file in file_list]
-        self.df = pd.concat(dfs, ignore_index=True)
-        
-        # Clean dates
+        try:
+            # Load files
+            file_list = glob.glob(self.directory + "/*.csv")
+            if not file_list:
+                raise ValueError(f"No CSV files found in directory: {self.directory}")
+            
+            dfs = []
+            for file in file_list:
+                try:
+                    df = pd.read_csv(file)
+                    dfs.append(df)
+                except Exception as e:
+                    print(f"Error reading file {file}: {str(e)}")
+            
+            if not dfs:
+                raise ValueError("No valid data loaded from CSV files")
+            
+            self.df = pd.concat(dfs, ignore_index=True)
+            
+            # Process and create features
+            self._clean_dates()
+            self._create_temporal_features()
+            self._clean_delays()
+            self._create_form_features()
+            self._create_volume_features()
+            self._create_statistical_features()
+            
+            # Handle missing values
+            self.df = self.df.dropna()
+            
+            print(f"\nDataFrame shape after cleaning: {self.df.shape}")
+            return self.df
+            
+        except Exception as e:
+            print(f"Error in load_and_clean_data: {str(e)}")
+            raise
+
+    def _clean_dates(self):
+        """Clean and validate dates"""
         self.df['Filing date'] = pd.to_datetime(self.df['Filing date'])
         self.df['Reporting date'] = pd.to_datetime(self.df['Reporting date'], errors='coerce')
         
-        # Add temporal features
+        self.df = self.df.dropna(subset=['Filing date', 'Reporting date'])
+        
+        current_year = pd.Timestamp.now().year
+        self.df = self.df[
+            (self.df['Filing date'].dt.year >= 2000) & 
+            (self.df['Filing date'].dt.year <= current_year)
+        ]
+
+    def _create_temporal_features(self):
+        """Create temporal features"""
+        # Basic date components
         self.df['Year'] = self.df['Filing date'].dt.year
         self.df['Month'] = self.df['Filing date'].dt.month
         self.df['Quarter'] = self.df['Filing date'].dt.quarter
         self.df['WeekDay'] = self.df['Filing date'].dt.day_name()
-        
-        # Calculate delays
-        self.df['Delay'] = self.df['Reporting date'] - self.df['Filing date']
-        self.df['Delay_in_days'] = self.df['Delay'].dt.days
-        
-        # Engineer additional features
-        self._engineer_features()
-        
-        return self.df
-    
-    def _engineer_features(self):
-        """Engineer additional features for ML models"""
-        # Time-based features
         self.df['DayOfWeek'] = self.df['Filing date'].dt.dayofweek
         self.df['DayOfYear'] = self.df['Filing date'].dt.dayofyear
         self.df['WeekOfYear'] = self.df['Filing date'].dt.isocalendar().week
+        self.df['DayOfMonth'] = self.df['Filing date'].dt.day
         
-        # Categorical encoding
-        categorical_columns = ['Form type', 'WeekDay']
-        for col in categorical_columns:
-            le = LabelEncoder()
-            self.df[f'{col}_encoded'] = le.fit_transform(self.df[col])
-            self.label_encoders[col] = le
+        # Calendar events
+        self.df['IsMonthEnd'] = self.df['Filing date'].dt.is_month_end.astype(int)
+        self.df['IsQuarterEnd'] = self.df['Filing date'].dt.is_quarter_end.astype(int)
+        self.df['IsYearEnd'] = self.df['Filing date'].dt.is_year_end.astype(int)
+        self.df['IsMonthStart'] = self.df['Filing date'].dt.is_month_start.astype(int)
+        self.df['IsQuarterStart'] = self.df['Filing date'].dt.is_quarter_start.astype(int)
+        self.df['IsWeekend'] = self.df['DayOfWeek'].isin([5, 6]).astype(int)
         
-        # Filing frequency features
-        self.df['Monthly_Filing_Count'] = self.df.groupby(
-            [self.df['Filing date'].dt.year, self.df['Filing date'].dt.month]
-        )['Filing date'].transform('count')
+        # Days remaining calculations
+        self.df['DaysInMonth'] = self.df['Filing date'].dt.days_in_month
+        self.df['DaysToMonthEnd'] = self.df['DaysInMonth'] - self.df['DayOfMonth']
+        self.df['DaysToYearEnd'] = 365 - self.df['DayOfYear']
+
+        # Calculate days to quarter end
+        self.df['DaysToQuarterEnd'] = self.df.apply(
+            lambda row: (pd.Timestamp(row['Year'], 3 * ((row['Month'] - 1) // 3 + 1), 1) + 
+                        pd.Timedelta(days=-1) - row['Filing date']).days,
+            axis=1
+        )
+
+    def _clean_delays(self):
+        """Calculate and clean delay values"""
+        self.df['Delay'] = (self.df['Filing date'] - self.df['Reporting date']).dt.days
+        
+        # Remove outliers using IQR method
+        Q1 = self.df['Delay'].quantile(0.25)
+        Q3 = self.df['Delay'].quantile(0.75)
+        IQR = Q3 - Q1
+        
+        self.df = self.df[
+            (self.df['Delay'] >= (Q1 - 2 * IQR)) & 
+            (self.df['Delay'] <= (Q3 + 2 * IQR))
+        ]
+        
+        self.df['Delay_in_days'] = self.df['Delay'].abs()
+
+    def _create_form_features(self):
+        """Create form-type related features"""
+        # Encode form types
+        le = LabelEncoder()
+        self.df['Form type_encoded'] = le.fit_transform(self.df['Form type'])
+        self.label_encoders['Form type'] = le
+        
+        # Form type frequency
+        form_freq = self.df['Form type'].value_counts(normalize=True)
+        self.df['Form type_freq'] = self.df['Form type'].map(form_freq)
+        
+        # Form type delay statistics
+        form_stats = self.df.groupby('Form type')['Delay_in_days'].agg(['mean', 'std']).fillna(0)
+        self.df['Form_avg_delay'] = self.df['Form type'].map(form_stats['mean'])
+        self.df['Form_std_delay'] = self.df['Form type'].map(form_stats['std'])
+
+    def _create_volume_features(self):
+        """Create volume-based features"""
+        # Daily volumes
+        daily_volumes = self.df.groupby('Filing date').size()
+        self.df['DailyVolume'] = self.df['Filing date'].map(daily_volumes)
+        
+        # Monthly volumes
+        monthly_volumes = self.df.groupby(['Year', 'Month']).size()
+        self.df['MonthlyVolume'] = self.df.apply(
+            lambda x: monthly_volumes.get((x['Year'], x['Month']), 0), 
+            axis=1
+        )
+
+    def _create_statistical_features(self):
+        """Create statistical features"""
+        # Rolling statistics
+        for window in [7, 30]:
+            for col in ['DailyVolume', 'Delay_in_days']:
+                self.df[f'{col}_rolling_mean_{window}d'] = self.df.groupby('Form type')[col].transform(
+                    lambda x: x.rolling(window=window, min_periods=1).mean()
+                )
+                self.df[f'{col}_rolling_std_{window}d'] = self.df.groupby('Form type')[col].transform(
+                    lambda x: x.rolling(window=window, min_periods=1).std()
+                )
         
         # Normalize numerical features
-        numerical_features = ['Delay_in_days', 'Monthly_Filing_Count']
-        self.df[numerical_features] = self.scaler.fit_transform(
-            self.df[numerical_features].fillna(0)
-        )
-    
+        numerical_features = self.df.select_dtypes(include=['int64', 'float64']).columns
+        self.df[numerical_features] = self.scaler.fit_transform(self.df[numerical_features])
+
     def train_delay_predictor(self):
-        """Train a Random Forest model to predict filing delays"""
-        features = [
-            'DayOfWeek', 'DayOfYear', 'WeekOfYear', 
-            'Form type_encoded', 'Monthly_Filing_Count'
-        ]
+        """Train the model with proper feature encoding"""
+        try:
+            # Identify numeric and categorical columns
+            numeric_features = self.df.select_dtypes(include=['int64', 'float64']).columns
+            categorical_features = self.df.select_dtypes(include=['object']).columns
+            
+            # Print column types for debugging
+            print("\nNumeric features:", len(numeric_features))
+            print("Categorical features:", len(categorical_features))
+            
+            # Select features for the model
+            exclude_columns = [
+                'Filing date', 'Reporting date', 'Delay', 'Form type',
+                'WeekDay', 'Season', 'Delay_in_days'
+            ]
+            
+            features = [col for col in self.df.columns 
+                       if col not in exclude_columns 
+                       and not any(ex in col for ex in categorical_features)]
+            
+            # Print selected features for debugging
+            print("\nSelected features:", len(features))
+            print(features)
+            
+            # Prepare data
+            X = self.df[features].copy()
+            y = self.df['Delay_in_days']
+            
+            # Fill any remaining NaN values
+            X = X.fillna(0)
+            
+            # Split data
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=42
+            )
+            
+            # Train initial model
+            print("\nTraining initial model...")
+            rf = RandomForestRegressor(n_estimators=100, random_state=42)
+            rf.fit(X_train, y_train)
+            initial_score = rf.score(X_test, y_test)
+            print(f"Initial model R² score: {initial_score:.4f}")
+            
+            # Grid search
+            print("\nProceeding with GridSearchCV...")
+            param_grid = {
+                'n_estimators': [200],
+                'max_depth': [15, 20],
+                'min_samples_split': [2, 5],
+                'min_samples_leaf': [1, 2],
+                'max_features': ['sqrt']
+            }
+            
+            grid_search = GridSearchCV(
+                RandomForestRegressor(random_state=42),
+                param_grid,
+                cv=5,
+                scoring='r2',
+                n_jobs=-1
+            )
+            
+            grid_search.fit(X_train, y_train)
+            
+            # Get predictions and scores
+            best_model = grid_search.best_estimator_
+            y_pred = best_model.predict(X_test)
+            
+            train_score = best_model.score(X_train, y_train)
+            test_score = best_model.score(X_test, y_test)
+            rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+            
+            # Store results
+            self.ml_models['delay_predictor'] = {
+                'model': best_model,
+                'features': features,
+                'train_score': train_score,
+                'test_score': test_score,
+                'rmse': rmse,
+                'best_params': grid_search.best_params_,
+                'feature_importance': dict(zip(features, best_model.feature_importances_))
+            }
+            
+            # Print metrics
+            print("\nModel Performance Metrics:")
+            print(f"Train R² Score: {train_score:.4f}")
+            print(f"Test R² Score: {test_score:.4f}")
+            print(f"RMSE: {rmse:.4f}")
+            print("\nBest Parameters:", grid_search.best_params_)
+            
+            # Print top features
+            importance_df = pd.DataFrame(
+                self.ml_models['delay_predictor']['feature_importance'].items(),
+                columns=['Feature', 'Importance']
+            ).sort_values('Importance', ascending=False)
+            
+            print("\nTop 10 Most Important Features:")
+            print(importance_df.head(10))
+            
+            return test_score
+            
+        except Exception as e:
+            print(f"\nError in train_delay_predictor: {str(e)}")
+            print("\nDataFrame info:")
+            print(self.df.info())
+            raise
+
+    def generate_visualizations(self):
+        """Generate visualizations"""
+        if self.df is None:
+            raise ValueError("No data available. Please load data first.")
         
-        X = self.df[features].dropna()
-        y = self.df['Delay_in_days'].dropna()
-        
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
+        try:
+            fig = plt.figure(figsize=(20, 15))
+            
+            # Filing trends
+            ax1 = plt.subplot(311)
+            self._plot_filing_trends(ax1)
+            
+            # Delay distribution
+            ax2 = plt.subplot(312)
+            self._plot_delay_distribution(ax2)
+            
+            # Weekly patterns
+            ax3 = plt.subplot(313)
+            self._plot_weekly_patterns(ax3)
+            
+            plt.tight_layout()
+            plt.show()
+            
+            # Plot feature importance separately
+            if self.ml_models:
+                self._plot_feature_importance()
+                
+        except Exception as e:
+            print(f"Error in generate_visualizations: {str(e)}")
+            raise
+
+    def _plot_filing_trends(self, ax):
+        """Plot filing trends"""
+        monthly_counts = self.df.groupby(pd.Grouper(key='Filing date', freq='M')).size()
+        ax.plot(monthly_counts.index, monthly_counts.values)
+        ax.set_title('Monthly Filing Trends')
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Number of Filings')
+        plt.setp(ax.get_xticklabels(), rotation=45)
+
+    def _plot_delay_distribution(self, ax):
+        """Plot delay distribution"""
+        ax.hist(self.df['Delay_in_days'].dropna(), bins=50)
+        ax.set_title('Distribution of Filing Delays')
+        ax.set_xlabel('Delay (days)')
+        ax.set_ylabel('Count')
+
+    def _plot_weekly_patterns(self, ax):
+        """Plot weekly patterns"""
+        weekly_pattern = pd.crosstab(
+            self.df['Filing date'].dt.day_name(),
+            self.df['Filing date'].dt.month
         )
         
-        rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
-        rf_model.fit(X_train, y_train)
+        days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        weekly_pattern = weekly_pattern.reindex(days_order)
         
-        self.ml_models['delay_predictor'] = {
-            'model': rf_model,
-            'features': features,
-            'accuracy': rf_model.score(X_test, y_test)
-        }
+        im = ax.pcolormesh(weekly_pattern.values, cmap='YlOrRd')
+        ax.set_yticks(np.arange(len(days_order)))
+        ax.set_yticklabels(days_order)
+        ax.set_xticks(np.arange(12))
+        ax.set_xticklabels(range(1, 13))
         
-        return rf_model.score(X_test, y_test)
-    
-    def predict_filing_delay(self, form_type, filing_date):
-        """Predict filing delay for a new filing"""
+        ax.set_title('Filing Patterns: Day of Week vs Month')
+        ax.set_xlabel('Month')
+        ax.set_ylabel('Day of Week')
+        plt.colorbar(im, ax=ax)
+
+    def _plot_feature_importance(self):
+        """Plot feature importance"""
         if 'delay_predictor' not in self.ml_models:
-            raise ValueError("Delay predictor model not trained yet")
+            return
             
-        # Prepare input features
-        filing_date = pd.to_datetime(filing_date)
-        input_data = pd.DataFrame({
-            'DayOfWeek': [filing_date.dayofweek],
-            'DayOfYear': [filing_date.dayofyear],
-            'WeekOfYear': [filing_date.isocalendar().week],
-            'Form type_encoded': [self.label_encoders['Form type'].transform([form_type])[0]],
-            'Monthly_Filing_Count': [self.df['Monthly_Filing_Count'].mean()]
-        })
+        importance_df = pd.DataFrame(
+            self.ml_models['delay_predictor']['feature_importance'].items(),
+            columns=['Feature', 'Importance']
+        ).sort_values('Importance', ascending=True)
         
-        prediction = self.ml_models['delay_predictor']['model'].predict(input_data)
-        return prediction[0]
-    
-    def train_anomaly_detector(self):
-        """Train an Isolation Forest model for advanced anomaly detection"""
-        features = [
-            'Delay_in_days', 'Monthly_Filing_Count',
-            'DayOfWeek', 'Form type_encoded'
-        ]
-        
-        X = self.df[features].dropna()
-        
-        iso_forest = IsolationForest(contamination=0.1, random_state=42)
-        self.ml_models['anomaly_detector'] = {
-            'model': iso_forest.fit(X),
-            'features': features
-        }
-        
-        # Add anomaly predictions to dataframe
-        self.df['is_anomaly'] = iso_forest.predict(X)
-        return self.df[self.df['is_anomaly'] == -1]  # Return anomalies
-    
-    def analyze_filing_patterns_ml(self):
-        """Use KMeans clustering to identify filing pattern clusters"""
-        features = [
-            'DayOfWeek', 'WeekOfYear', 'Monthly_Filing_Count',
-            'Delay_in_days', 'Form type_encoded'
-        ]
-        
-        X = self.df[features].dropna()
-        
-        # Determine optimal number of clusters using elbow method
-        inertias = []
-        K = range(1, 11)
-        for k in K:
-            kmeans = KMeans(n_clusters=k, random_state=42)
-            kmeans.fit(X)
-            inertias.append(kmeans.inertia_)
-        
-        # Plot elbow curve
         plt.figure(figsize=(10, 6))
-        plt.plot(K, inertias, 'bx-')
-        plt.xlabel('k')
-        plt.ylabel('Inertia')
-        plt.title('Elbow Method For Optimal k')
+        plt.barh(range(len(importance_df)), importance_df['Importance'])
+
+def main():
+    def generate_visualizations(self):
+        """Generate comprehensive visualizations"""
+        if self.df is None:
+            raise ValueError("No data available. Please load data first.")
+        
+        plt.style.use('default')
+        
+        # Create subplots for all visualizations
+        fig = plt.figure(figsize=(20, 15))
+        gs = fig.add_gridspec(3, 2)
+        
+        # Filing trends
+        ax1 = fig.add_subplot(gs[0, :])
+        self._plot_filing_trends(ax1)
+        
+        # Delay distribution
+        ax2 = fig.add_subplot(gs[1, 0])
+        ax3 = fig.add_subplot(gs[1, 1])
+        self._plot_delay_distribution(ax2, ax3)
+        
+        # Weekly patterns
+        ax4 = fig.add_subplot(gs[2, 0])
+        self._plot_weekly_patterns(ax4)
+        
+        # Feature importance
+        if 'delay_predictor' in self.ml_models:
+            ax5 = fig.add_subplot(gs[2, 1])
+            self._plot_feature_importance(ax5)
+        
+        plt.tight_layout()
         plt.show()
-        
-        # Perform clustering with optimal k (using 4 as default)
-        kmeans = KMeans(n_clusters=4, random_state=42)
-        self.df['filing_cluster'] = kmeans.fit_predict(X)
-        
-        return self.analyze_clusters()
     
-    def analyze_clusters(self):
-        """Analyze the characteristics of each filing cluster"""
-        cluster_analysis = {}
+    def _plot_filing_trends(self, ax):
+        """Plot filing trends over time with trend line"""
+        monthly_counts = self.df.groupby(
+            pd.Grouper(key='Filing date', freq='M')
+        ).size().reset_index()
         
-        for cluster in self.df['filing_cluster'].unique():
-            cluster_data = self.df[self.df['filing_cluster'] == cluster]
-            cluster_analysis[f'Cluster_{cluster}'] = {
-                'size': len(cluster_data),
-                'avg_delay': cluster_data['Delay_in_days'].mean(),
-                'common_form_type': cluster_data['Form type'].mode()[0],
-                'common_weekday': cluster_data['WeekDay'].mode()[0],
-                'avg_monthly_filings': cluster_data['Monthly_Filing_Count'].mean()
-            }
+        ax.plot(monthly_counts['Filing date'], 
+                monthly_counts[0], 
+                color='blue', 
+                alpha=0.6, 
+                label='Actual Filings')
         
-        return pd.DataFrame(cluster_analysis).T
+        z = np.polyfit(range(len(monthly_counts)), monthly_counts[0], 1)
+        p = np.poly1d(z)
+        ax.plot(monthly_counts['Filing date'], 
+                p(range(len(monthly_counts))), 
+                'r--', 
+                alpha=0.8, 
+                label='Trend Line')
+        
+        ax.set_title('Monthly Filing Frequency Trend Analysis')
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Number of Filings')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        plt.setp(ax.get_xticklabels(), rotation=45)
     
-    def predict_future_filing_volume(self, days=30):
-        """Predict future filing volumes using Random Forest"""
-        # Prepare historical data
-        historical_data = self.df.groupby('Filing date').size().reset_index()
-        historical_data.columns = ['date', 'filings']
+    def _plot_delay_distribution(self, ax1, ax2):
+        """Plot filing delay distribution"""
+        ax1.hist(self.df['Delay_in_days'].dropna(), 
+                bins=50, 
+                color='blue', 
+                alpha=0.6)
+        ax1.set_title('Distribution of Filing Delays')
+        ax1.set_xlabel('Delay (days)')
+        ax1.set_ylabel('Count')
         
-        # Create features for prediction
-        historical_data['dayofweek'] = historical_data['date'].dt.dayofweek
-        historical_data['dayofyear'] = historical_data['date'].dt.dayofyear
-        historical_data['weekofyear'] = historical_data['date'].dt.isocalendar().week
-        
-        # Train model
-        features = ['dayofweek', 'dayofyear', 'weekofyear']
-        X = historical_data[features]
-        y = historical_data['filings']
-        
-        model = RandomForestRegressor(n_estimators=100, random_state=42)
-        model.fit(X, y)
-        
-        # Generate future dates
-        last_date = historical_data['date'].max()
-        future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=days)
-        
-        # Create future features
-        future_data = pd.DataFrame({
-            'date': future_dates,
-            'dayofweek': future_dates.dayofweek,
-            'dayofyear': future_dates.dayofyear,
-            'weekofyear': future_dates.isocalendar().week
-        })
-        
-        # Make predictions
-        future_data['predicted_filings'] = model.predict(future_data[features])
-        
-        return future_data[['date', 'predicted_filings']]
+        form_types = self.df['Form type'].unique()
+        delays_by_form = [self.df[self.df['Form type'] == ft]['Delay_in_days'] 
+                         for ft in form_types]
+        ax2.boxplot(delays_by_form, labels=form_types)
+        ax2.set_title('Filing Delays by Form Type')
+        plt.setp(ax2.get_xticklabels(), rotation=45)
+        ax2.set_ylabel('Delay (days)')
     
-    def generate_ml_report(self):
-        """Generate a comprehensive ML analysis report"""
-        report = f"""
-SEC Filings Machine Learning Analysis Report
-==========================================
+    def _plot_weekly_patterns(self, ax):
+        """Create weekly filing pattern visualization"""
+        weekly_pattern = pd.crosstab(
+            self.df['Filing date'].dt.day_name(),
+            self.df['Filing date'].dt.month
+        )
+        
+        days_order = ['Monday', 'Tuesday', 'Wednesday', 
+                     'Thursday', 'Friday', 'Saturday', 'Sunday']
+        weekly_pattern = weekly_pattern.reindex(days_order)
+        
+        im = ax.pcolormesh(weekly_pattern.values, cmap='YlOrRd')
+        
+        ax.set_yticks(np.arange(0.5, len(days_order)))
+        ax.set_yticklabels(days_order)
+        ax.set_xticks(np.arange(0.5, 13))
+        ax.set_xticklabels(range(1, 13))
+        
+        ax.set_title('Filing Patterns: Day of Week vs Month')
+        ax.set_xlabel('Month')
+        ax.set_ylabel('Day of Week')
+        
+        plt.colorbar(im, ax=ax, label='Number of Filings')
+    
+    def _plot_feature_importance(self, ax):
+        """Visualize feature importance from the ML model"""
+        importance_df = pd.DataFrame(
+            self.ml_models['delay_predictor']['feature_importance'].items(),
+            columns=['Feature', 'Importance']
+        ).sort_values('Importance', ascending=True)
+        
+        ax.barh(range(len(importance_df)), 
+                importance_df['Importance'], 
+                align='center',
+                color='blue',
+                alpha=0.6)
+        
+        ax.set_yticks(range(len(importance_df)))
+        ax.set_yticklabels(importance_df['Feature'])
+        
+        ax.set_title('Feature Importance in Delay Prediction')
+        ax.set_xlabel('Importance Score')
 
-Model Performance Metrics:
-------------------------
-Filing Delay Predictor Accuracy: {self.ml_models.get('delay_predictor', {}).get('accuracy', 'Not trained')}
-Number of Anomalies Detected: {len(self.df[self.df['is_anomaly'] == -1]) if 'is_anomaly' in self.df else 'Not analyzed'}
 
-Clustering Analysis:
-------------------
-{self.analyze_clusters().to_string() if 'filing_cluster' in self.df else 'Clustering not performed'}
 
-Feature Importance (Delay Predictor):
-----------------------------------
-{pd.DataFrame({
-    'Feature': self.ml_models.get('delay_predictor', {}).get('features', []),
-    'Importance': self.ml_models.get('delay_predictor', {}).get('model', RandomForestRegressor()).feature_importances_
-}).sort_values('Importance', ascending=False).to_string() if 'delay_predictor' in self.ml_models else 'Model not trained'}
-"""
-        return report
+def main():
+    try:
+        directory = r"C:\Users\mattb\Videos\Desktop\Csv sec"
+        analyzer = SECFilingAnalyzer(directory)
+        
+        print("Loading and cleaning data...")
+        df = analyzer.load_and_clean_data()
+        print(f"Successfully loaded and cleaned {len(df)} records")
+        
+        print("\nTraining model...")
+        accuracy = analyzer.train_delay_predictor()
+        print(f"Model R² score: {accuracy:.4f}")
+        
+        print("\nGenerating visualizations...")
+        analyzer.generate_visualizations()
+        
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        raise
 
-# Example usage:
 if __name__ == "__main__":
-    directory = r"C:\Users\mattb\Videos\Desktop\Csv sec"
-    analyzer = SECFilingAnalyzer(directory)
-    analyzer.load_and_clean_data()
-    
-    # Train ML models
-    print("Training delay predictor...")
-    accuracy = analyzer.train_delay_predictor()
-    print(f"Delay predictor accuracy: {accuracy:.2f}")
-    
-    print("\nTraining anomaly detector...")
-    anomalies = analyzer.train_anomaly_detector()
-    print(f"Found {len(anomalies)} anomalies")
-    
-    print("\nAnalyzing filing patterns...")
-    clusters = analyzer.analyze_filing_patterns_ml()
-    print("\nCluster Analysis:")
-    print(clusters)
-    
-    # Generate future predictions
-    print("\nPredicting future filing volumes...")
-    future_predictions = analyzer.predict_future_filing_volume(days=30)
-    print("\nPredicted filing volumes for next 30 days:")
-    print(future_predictions)
-    
-    # Generate and print ML report
-    report = analyzer.generate_ml_report()
-    print("\nML Analysis Report:")
-    print(report)
+    main()
+)
     
     
