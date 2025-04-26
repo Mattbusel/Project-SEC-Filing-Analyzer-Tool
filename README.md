@@ -15,7 +15,7 @@
 This project develops a robust machine learning pipeline to **analyze financial data**, **detect anomalies**, and **forecast future trends**. It combines classic statistical models with modern ML techniques, focusing on risk identification and actionable insights.
 
 
-![SEC Filing Analyzer](https://github.com/yourusername/Project-SEC-Filing-Analyzer-Tool/blob/main/ChatGPT%20Image%20Apr%2026%2C%202025%2C%2010_47_25%20AM.png?raw=true)
+![SEC Filing Analyzer](https://github.com/Mattbusel/Project-SEC-Filing-Analyzer-Tool/blob/main/ChatGPT%20Image%20Apr%2026%2C%202025%2C%2010_47_25%20AM.png)
 
 ---
 
