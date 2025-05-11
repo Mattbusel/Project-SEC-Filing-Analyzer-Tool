@@ -90,15 +90,11 @@ model.fit(X_train, y_train)
 
 ### Example Visualization
 
-*(Insert charts showing clustered data or anomalies—already uploaded screenshots could go here.)*
 
----
 
-###  Results
 
-- Forecast accuracy: ~XX% (adjust based on evaluation metrics)
-- Number of anomalies detected: XYZ
-- Clear differentiation between normal and outlier behavior
+
+
 
 ---
 
