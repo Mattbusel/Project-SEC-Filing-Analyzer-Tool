@@ -1,12 +1,11 @@
 
-#  Financial Data Anomaly Detection & Forecasting  
+# Financial Data Anomaly Detection & Forecasting 
 ### _ML for Risk, Insight, and Financial Foresight_
 
-![Stage: Active](https://img.shields.io/badge/stage-active-brightgreen)  
-![ML Models](https://img.shields.io/badge/models-RandomForest%20%7C%20IsolationForest%20%7C%20KMeans-blue)  
-![Language: Python](https://img.shields.io/badge/language-python-yellow)  
+![Stage: Active](https://img.shields.io/badge/stage-active-brightgreen) 
+![ML Models](https://img.shields.io/badge/models-RandomForest%20%7C%20IsolationForest%20%7C%20KMeans-blue) 
+![Language: Python](https://img.shields.io/badge/language-python-yellow) 
 ![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen)
-
 
 ---
 
@@ -14,39 +13,38 @@
 
 This project develops a robust machine learning pipeline to **analyze financial data**, **detect anomalies**, and **forecast future trends**. It combines classic statistical models with modern ML techniques, focusing on risk identification and actionable insights.
 
-
 ![SEC Filing Analyzer](https://github.com/Mattbusel/Project-SEC-Filing-Analyzer-Tool/blob/main/ChatGPT%20Image%20Apr%2026%2C%202025%2C%2010_47_25%20AM.png)
 
 ---
 
-###  Key Features
+### Key Features
 
-- ** Predictive Modeling**  
-  Utilizes `RandomForestRegressor` to forecast financial performance based on historical data.
+- ** Predictive Modeling** 
+ Utilizes `RandomForestRegressor` to forecast financial performance based on historical data.
 
-- ** Anomaly Detection**  
-  Implements `IsolationForest` to flag outliers and irregular patterns, supporting proactive risk mitigation.
+- ** Anomaly Detection** 
+ Implements `IsolationForest` to flag outliers and irregular patterns, supporting proactive risk mitigation.
 
-- ** Pattern Recognition via Clustering**  
-  Leverages `KMeans` to uncover natural groupings and relationships within complex financial datasets.
+- ** Pattern Recognition via Clustering** 
+ Leverages `KMeans` to uncover natural groupings and relationships within complex financial datasets.
 
-- ** Intelligent Preprocessing**  
-  Handles missing values, scales features, and engineers variables to enhance model fidelity.
+- ** Intelligent Preprocessing** 
+ Handles missing values, scales features, and engineers variables to enhance model fidelity.
 
 ---
 
 ### Technologies Used
 
-- **Language:** Python  
+- **Language:** Python 
 - **Libraries:**
-  - `scikit-learn` (RandomForestRegressor, IsolationForest, KMeans)
-  - `pandas` for data wrangling
-  - `matplotlib`, `seaborn` for visualization
+ - `scikit-learn` (RandomForestRegressor, IsolationForest, KMeans)
+ - `pandas` for data wrangling
+ - `matplotlib`, `seaborn` for visualization
 - **Data:** Historical financial data or synthetic datasets (can be adjusted per use case)
 
 ---
 
-###  Installation
+### Installation
 
 ```bash
 git clone https://github.com/yourusername/financial-anomaly-detection.git
@@ -56,7 +54,7 @@ pip install -r requirements.txt
 
 ---
 
-###  How It Works
+### How It Works
 
 #### 1. **Data Loading & Preprocessing**
 - Load data from `.csv` or custom source
@@ -90,15 +88,9 @@ model.fit(X_train, y_train)
 
 ### Example Visualization
 
-
-
-
-
-
-
 ---
 
-###  Future Enhancements
+### Future Enhancements
 
 - Transition from classical ML to **deep learning** models (e.g., LSTMs or Transformers for time series)
 - Build **real-time data pipelines** using tools like Apache Kafka or Airflow
@@ -107,7 +99,7 @@ model.fit(X_train, y_train)
 
 ---
 
-###  How to Contribute
+### How to Contribute
 
 - **Data Scientists**: Experiment with alternative models or feature selection
 - **Engineers**: Improve infrastructure, API integration, and deployment
@@ -116,5 +108,3 @@ model.fit(X_train, y_train)
 > Fork the repo, open a PR, or start a discussion!
 
 ---
-
-
